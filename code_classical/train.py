@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import wandb
+from utils.encoding import encode_complex
+
 
 def compute_loss_accuracy(model, loader, epoch, device=torch.device("cpu"), is_fisher=False):
     """
@@ -27,6 +29,8 @@ def compute_loss_accuracy(model, loader, epoch, device=torch.device("cpu"), is_f
         # 遍历数据批次
         for batch_index, (X, Y) in enumerate(loader):
             X, Y = X.to(device), Y.to(device)  # 将数据移到指定设备
+
+            X = encode_complex(X, method="rect")
 
             # 根据模型损失类型决定前向传播方式
             if model.loss == 'DUQ':
@@ -60,6 +64,9 @@ def compute_loss_accuracy(model, loader, epoch, device=torch.device("cpu"), is_f
             loss_kl_ = loss_kl_ / Y_pred_all.size(0)
             loss_fisher_ = loss_fisher_ / Y_pred_all.size(0)
 
+        # 打印预测类别分布
+        # print("Y_pred counts:", torch.bincount(Y_pred_all))
+        
         # 计算准确率
         accuracy = ((Y_pred_all == Y_all).float().sum() / Y_pred_all.size(0)).item()
 
@@ -103,6 +110,8 @@ def train(model, train_loader, val_loader, max_epochs=200, frequency=2, patience
         # 遍历训练数据批次
         for batch_index, (X_train, Y_train) in enumerate(train_loader):
             X_train, Y_train = X_train.to(device), Y_train.to(device)  # 将数据移到指定设备
+
+            X_train = encode_complex(X_train, method="rect")
 
             model.train()  # 确保模型处于训练模式
             # 前向传播并计算损失

@@ -3,15 +3,18 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from architectures.linear_sequential import linear_sequential
-from architectures.convolution_linear_sequential import convolution_linear_sequential
-from architectures.vgg_sequential import vgg16_bn
+
+# 需要重新定义的架构导入
+# 注意：这些架构需要重新实现为复数版本
+from architectures.complex_linear_sequential import complex_linear_sequential
+from architectures.complex_convolution_linear_sequential import complex_convolution_linear_sequential
+from architectures.complex_vgg_sequential import complex_vgg16_bn
 
 
 class ModifiedEvidentialNet(nn.Module):
     """
-    修改版的证据神经网络（Modified Evidential Neural Network）
-    这是一种基于证据理论的深度学习模型，可以估计预测的不确定性
+    复数版证据神经网络（Complex Modified Evidential Neural Network）
+    这是一种基于证据理论的深度学习模型，使用复数张量计算，可以估计预测的不确定性
     """
     def __init__(self,
                  input_dims,  # 输入维度，整数列表
@@ -54,31 +57,31 @@ class ModifiedEvidentialNet(nn.Module):
         self.loss_kl = torch.tensor(0.0)  # KL散度损失
         self.loss_fisher = torch.tensor(0.0)  # Fisher信息损失
 
-        # 根据指定的架构类型构建网络
+        # 根据指定的架构类型构建复数网络
         if architecture == 'linear':
-            # 线性网络架构
-            self.sequential = linear_sequential(input_dims=self.input_dims,
+            # 线性复数网络架构
+            self.sequential = complex_linear_sequential(input_dims=self.input_dims,
                                                 hidden_dims=self.hidden_dims,
                                                 output_dim=self.output_dim,
                                                 k_lipschitz=self.k_lipschitz)
         elif architecture == 'conv':
-            # 卷积网络架构
+            # 卷积复数网络架构
             assert len(input_dims) == 3  # 确保输入维度适合卷积网络（通道数，高度，宽度）
-            self.sequential = convolution_linear_sequential(input_dims=self.input_dims,
+            self.sequential = complex_convolution_linear_sequential(input_dims=self.input_dims,
                                                             linear_hidden_dims=self.hidden_dims,
                                                             conv_hidden_dims=[64, 64, 64],  # 卷积层隐藏维度
                                                             output_dim=self.output_dim,
                                                             kernel_dim=self.kernel_dim,
                                                             k_lipschitz=self.k_lipschitz)
         elif architecture == 'vgg':
-            # VGG网络架构
+            # VGG复数网络架构
             assert len(input_dims) == 3  # 确保输入维度适合VGG网络
-            self.sequential = vgg16_bn(output_dim=self.output_dim, k_lipschitz=self.k_lipschitz)
+            self.sequential = complex_vgg16_bn(output_dim=self.output_dim, k_lipschitz=self.k_lipschitz)
         else:
             raise NotImplementedError
 
-        # 定义Softmax层用于输出概率分布
-        self.softmax = nn.Softmax(dim=-1)
+        # 需要实现一个复数版本的Softmax
+        # 由于标准softmax不适用于复数，这里我们将使用模值的方式处理
         self.clf_type = clf_type
 
         # 优化器设置
@@ -87,12 +90,50 @@ class ModifiedEvidentialNet(nn.Module):
         if architecture == 'conv':
             self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=15, gamma=0.1)
 
+    def complex_softmax(self, x):
+        """
+        复数版本的softmax函数
+        计算复数张量的模值，然后应用标准softmax
+        
+        参数:
+        - x: 复数张量
+        
+        返回:
+        - 应用于复数张量模值的softmax概率分布
+        """
+        # 计算复数张量的模值（绝对值）
+        x_abs = torch.abs(x)
+        # 应用标准softmax到模值上
+        return F.softmax(x_abs, dim=-1)
+
+    def complex_softplus(self, x):
+        """
+        复数版本的softplus函数
+        分别应用于实部和虚部
+        
+        参数:
+        - x: 复数张量
+        
+        返回:
+        - 处理后的复数张量
+        """
+        # 分离实部和虚部
+        real = x.real
+        imag = x.imag
+        
+        # 分别应用softplus
+        real_out = F.softplus(real)
+        imag_out = F.softplus(imag)
+        
+        # 重新组合为复数
+        return torch.complex(real_out, imag_out)
+
     def forward(self, input, labels_=None, return_output='alpha', compute_loss=False, epoch=10.):
         """
         前向传播
         
         参数:
-        - input: 输入数据
+        - input: 输入数据（复数张量）
         - labels_: 标签数据（如果需要计算损失）
         - return_output: 返回输出类型，可选 'hard'（硬标签）, 'soft'（软标签）, 'alpha'（Dirichlet分布参数）
         - compute_loss: 是否计算损失
@@ -106,19 +147,31 @@ class ModifiedEvidentialNet(nn.Module):
 
         # 前向传播过程
         logits = self.sequential(input)  # 获取网络的原始输出
-        evidence = F.softplus(logits)  # 应用softplus激活函数获取证据
-        alpha = evidence + self.lamb2  # 计算Dirichlet分布的α参数
+        
+        # 对于复数输出，我们需要一个特殊的softplus处理
+        evidence = self.complex_softplus(logits)  # 应用复数版softplus激活函数获取证据
+        
+        # 计算Dirichlet分布的α参数
+        # 对于复数值，我们使用模值加上lamb2作为alpha
+        alpha_real = evidence.real + self.lamb2
+        alpha_imag = evidence.imag
+        alpha = torch.complex(alpha_real, alpha_imag)
 
         # 如果需要计算损失
         if compute_loss:
-            # 将标签转换为one-hot编码
-            labels_1hot = torch.zeros_like(logits).scatter_(-1, labels_.unsqueeze(-1), 1)
-            # 计算均方误差损失
-            self.loss_mse = self.compute_mse(labels_1hot, evidence)
+            # 将标签转换为one-hot编码（这里需要处理复数情况）
+            labels_1hot = torch.zeros_like(logits.real).scatter_(-1, labels_.unsqueeze(-1), 1)
+            labels_1hot = torch.complex(labels_1hot, torch.zeros_like(labels_1hot))
+            
+            # 计算均方误差损失（使用复数版本）
+            self.loss_mse = self.compute_complex_mse(labels_1hot, evidence)
+            
             # 计算KL散度的alpha参数
-            kl_alpha = evidence * (1 - labels_1hot) + self.lamb2
-            # 计算KL散度损失
-            self.loss_kl = self.compute_kl_loss(kl_alpha, self.lamb2)
+            # 由于KL散度定义在实数域上，我们只使用实部进行计算
+            kl_alpha_real = evidence.real * (1 - labels_1hot.real) + self.lamb2
+            
+            # 计算KL散度损失（只使用实部）
+            self.loss_kl = self.compute_kl_loss(kl_alpha_real, self.lamb2)
 
             # 根据kl_c的值决定如何组合损失
             if self.kl_c == -1:
@@ -135,40 +188,51 @@ class ModifiedEvidentialNet(nn.Module):
             return self.predict(logits)
         elif return_output == 'soft':
             # 返回软标签（概率分布）
-            return self.softmax(logits)
+            return self.complex_softmax(logits)
         elif return_output == 'alpha':
             # 返回Dirichlet分布参数alpha
             return alpha
         else:
             raise AssertionError
 
-    def compute_mse(self, labels_1hot, evidence):
+    def compute_complex_mse(self, labels_1hot, evidence):
         """
-        计算均方误差损失
+        计算复数张量的均方误差损失
         
         参数:
-        - labels_1hot: One-hot编码的标签
-        - evidence: 模型产生的证据
+        - labels_1hot: One-hot编码的标签（复数张量）
+        - evidence: 模型产生的证据（复数张量）
         
         返回:
         - loss_mse: 均方误差损失
         """
         num_classes = evidence.shape[-1]  # 类别数量
-
+        
+        # 计算总证据（使用模值的平方和）
+        evidence_sum = torch.sum(torch.abs(evidence)**2, dim=-1, keepdim=True)
+        
         # 计算预测与真实标签之间的差距
-        # 公式基于Dirichlet分布的期望与标签的差异
-        gap = labels_1hot - (evidence + self.lamb2) / \
-              (evidence + self.lamb1 * (torch.sum(evidence, dim=-1, keepdim=True) - evidence) + self.lamb2 * num_classes)
-
+        # 公式需要调整以适应复数情况
+        # 我们使用复数除法，然后计算实部和虚部的均方差
+        denominator = (torch.abs(evidence) + self.lamb1 * (evidence_sum - torch.abs(evidence)**2) + 
+                       self.lamb2 * num_classes)
+        
+        # 为了避免除零错误，添加一个小的epsilon
+        epsilon = 1e-8
+        normalized_evidence = (torch.abs(evidence) + self.lamb2) / (denominator + epsilon)
+        
+        # 计算与标签的差距
+        gap = labels_1hot.real - normalized_evidence
+        
         # 计算平方误差
         loss_mse = gap.pow(2).sum(-1)
-
+        
         # 返回平均损失
         return loss_mse.mean()
 
     def compute_kl_loss(self, alphas, target_concentration, epsilon=1e-8):
         """
-        计算KL散度损失
+        计算KL散度损失（保持不变，因为KL散度在实数域上定义）
         
         参数:
         - alphas: Dirichlet分布的α参数
@@ -216,14 +280,15 @@ class ModifiedEvidentialNet(nn.Module):
 
     def predict(self, p):
         """
-        根据logits预测类别
+        根据复数logits预测类别
         
         参数:
-        - p: logits输出
+        - p: 复数logits输出
         
         返回:
         - output_pred: 预测的类别索引
         """
-        # 返回概率最高的类别索引
-        output_pred = torch.max(p, dim=-1)[1]
+        # 使用模值来确定最大值
+        p_abs = torch.abs(p)
+        output_pred = torch.max(p_abs, dim=-1)[1]
         return output_pred

@@ -8,7 +8,7 @@
   "model_type": "menet",
   "loss": "MEDL",
   "clf_type": "softplus",
-  "lr": [0.001],
+  "lr": [0.0003],
   "fisher_c": [0.0],
   "lamb1_list": [1.0],
   "lamb2_list": [0.1],

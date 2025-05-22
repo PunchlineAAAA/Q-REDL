@@ -1,0 +1,19 @@
+conda activate redl
+
+cd ICLR2024-REDL/code_classical
+
+python main.py --configid "1_mnist/mnist-redl-train" --suffix test
+
+python main.py --configid "2_cifar10/cifar10-redl-train" --suffix test
+
+————————————————————————
+
+conda activate redl-cpu
+
+cd Q-REDL/code_classical
+
+python main.py --configid "1_mnist/mnist-redl-test" --suffix test
+
+python main.py --configid "2_cifar10/cifar10-redl-train" --suffix test
+
+python main.py --configid "2_cifar10/cifar10-redl-debug" --suffix test

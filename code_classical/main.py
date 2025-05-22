@@ -36,6 +36,7 @@ logging.getLogger().setLevel(logging.INFO)
 
 def main(config_dict):
     """主函数，负责整个训练和评估流程"""
+    print("✅ main() 已启动，准备读取配置并设置环境")
     # 从配置字典中提取各种配置参数
     config_id = config_dict["config_id"]  # 配置ID
     suffix = config_dict["suffix"]  # 后缀名
@@ -86,11 +87,14 @@ def main(config_dict):
     # 设置设备(GPU或CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    print("✅ 开始遍历超参数组合")
     # 遍历所有的参数组合
     for setting in itertools.product(
         seeds, lr_list, fisher_c_list, name_model_list, lamb1_list, lamb2_list
     ):
         (seed, lr, fisher_c, name_model, lamb1, lamb2) = setting
+
+        print(f"🎯 当前 setting: seed={seed}, lr={lr}, fisher_c={fisher_c}, lamb1={lamb1}, lamb2={lamb2}")
 
         # 设置随机种子以确保可重复性
         random.seed(seed)
@@ -106,6 +110,8 @@ def main(config_dict):
         train_loader, val_loader, test_loader, N, output_dim = get_dataset(
             dataset_name, batch_size=batch_size, split=split, seed=seed
         )
+
+        print("✅ 数据集加载完成")
 
         # 记录配置信息
         logging.info(f"Received the following configuration: seed {seed}")
@@ -230,6 +236,7 @@ def main(config_dict):
 
             # 创建模型
             model = create_model[model_type](**filtered_config_dict)
+            print("✅ 模型已构建完成")
 
             if torch.cuda.is_available():
                 # 如果有多个GPU，使用DataParallel
@@ -260,6 +267,7 @@ def main(config_dict):
 
             # 将模型移至设备并开始训练
             model.to(device)
+            print("🚀 准备开始训练")    
             train(
                 model,
                 train_loader,
@@ -276,9 +284,11 @@ def main(config_dict):
 
             # 加载最佳模型
             model.load_state_dict(torch.load(model_path + "_best")["model_state_dict"])
+            print("✅ 模型训练完成，最佳模型已加载")
 
         ## 测试模型
         model.to(device)
+        print("🔍 正在进行测试集评估")
         model.eval()  # 设置为评估模式
 
         with torch.no_grad():
@@ -347,6 +357,7 @@ def main(config_dict):
             # 处理分布外(OOD)数据集
             ood_dataset_loaders = {}
             for ood_dataset_name in ood_dataset_names:
+                print(f"🔍 正在处理 OOD 数据集: {ood_dataset_name}")
                 config_dict["ood_dataset_name"] = ood_dataset_name
                 # 加载OOD数据集
                 _, _, ood_test_loader, _, _ = get_dataset(

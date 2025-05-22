@@ -5,6 +5,8 @@ from torch.distributions import Categorical
 from torch.distributions import Dirichlet
 from sklearn import metrics
 
+from utils.encoding import encode_complex
+
 import wandb
 import pandas as pd
 from PIL import Image as im
@@ -25,6 +27,8 @@ def compute_X_Y_alpha(model, loader, device, noise_epsilon=0.0):
         X = (X + noise_epsilon * torch.randn_like(X)).to(device)
         Y = Y.to(device)
 
+        X = encode_complex(X, method="rect")
+
         model_pred = model(X, None, return_output='alpha', compute_loss=False)
 
         X_all.append(X.to("cpu"))
@@ -38,13 +42,19 @@ def compute_X_Y_alpha(model, loader, device, noise_epsilon=0.0):
     return Y_all, X_all, model_pred_all
 
 def accuracy(Y, alpha):
-    corrects = (Y.squeeze() == alpha.max(-1)[1]).type(torch.DoubleTensor)
+    # 若 alpha 是复数，取其实部进行比较
+    if torch.is_complex(alpha):
+        alpha = alpha.real
+    corrects = (Y.squeeze() == alpha.max(-1)[1]).double()
     accuracy = corrects.sum() / corrects.size(0)
     return accuracy.cpu().detach().numpy()
 
 
 # ID detection metrics
 def confidence(Y, alpha, uncertainty_type='max_prob', save_path=None, return_scores=False):
+    if torch.is_complex(alpha):
+        alpha = alpha.real
+
     corrects = (Y.squeeze() == alpha.max(-1)[1]).cpu().detach().numpy()
 
     if uncertainty_type == 'max_alpha':
@@ -103,6 +113,9 @@ def confidence(Y, alpha, uncertainty_type='max_prob', save_path=None, return_sco
 
 # Our ID detection metrics
 def our_confidence(Y, alpha, uncertainty_type='max_prob', save_path=None, return_scores=False, lamb1=1.0, lamb2=1.0):
+    if torch.is_complex(alpha):
+        alpha = alpha.real
+
     corrects = (Y.squeeze() == alpha.max(-1)[1]).cpu().detach().numpy()
 
     if uncertainty_type == 'max_alpha':
@@ -177,6 +190,11 @@ def brier_score(Y, alpha):
 
 # OOD detection metrics
 def anomaly_detection(alpha, ood_alpha, uncertainty_type='max_prob', save_path=None, return_scores=False):
+    if torch.is_complex(alpha):
+        alpha = alpha.real
+    if torch.is_complex(ood_alpha):
+        ood_alpha = ood_alpha.real
+
     if uncertainty_type == 'alpha0':
         scores = alpha.sum(-1).cpu().detach().numpy()
         ood_scores = ood_alpha.sum(-1).cpu().detach().numpy()
@@ -261,6 +279,11 @@ def anomaly_detection(alpha, ood_alpha, uncertainty_type='max_prob', save_path=N
 
 # OOD detection metrics for modified EDL
 def our_anomaly_detection(alpha, ood_alpha, uncertainty_type='max_prob', save_path=None, return_scores=False, lamb1=1.0, lamb2=1.0):
+    if torch.is_complex(alpha):
+        alpha = alpha.real
+    if torch.is_complex(ood_alpha):
+        ood_alpha = ood_alpha.real
+
     if uncertainty_type == 'alpha0':
         scores = alpha.sum(-1).cpu().detach().numpy()
         ood_scores = ood_alpha.sum(-1).cpu().detach().numpy()
@@ -372,6 +395,11 @@ def entropy(alpha, uncertainty_type, n_bins=10, plot=True):
 
 # additional metric based on diffEentropyUncertainty
 def diff_entropy(alpha, ood_alpha, save_path=None, return_scores=False):
+    if torch.is_complex(alpha):
+        alpha = alpha.real
+    if torch.is_complex(ood_alpha):
+        ood_alpha = ood_alpha.real
+
     eps = 1e-6
     alpha = alpha + eps
     ood_alpha = ood_alpha + eps
@@ -412,6 +440,11 @@ def diff_entropy(alpha, ood_alpha, save_path=None, return_scores=False):
 
 # additional metric based on  distUncertainty
 def dist_uncertainty(alpha, ood_alpha, save_path=None, return_scores=False):
+    if torch.is_complex(alpha):
+        alpha = alpha.real
+    if torch.is_complex(ood_alpha):
+        ood_alpha = ood_alpha.real
+
     eps = 1e-6
     alpha = alpha + eps
     ood_alpha = ood_alpha + eps
