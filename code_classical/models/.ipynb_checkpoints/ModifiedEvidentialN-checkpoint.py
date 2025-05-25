@@ -3,6 +3,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+
 # 需要重新定义的架构导入
 # 注意：这些架构需要重新实现为复数版本
 from architectures.complex_linear_sequential import complex_linear_sequential
@@ -142,18 +143,9 @@ class ModifiedEvidentialNet(nn.Module):
             raise ValueError(
                 "Input must be complex-valued. Please encode using encode_complex()."
             )
-        
-        input = input.to(torch.complex64)
-        input = input.to(next(self.parameters()).device)
 
         complex_logits = self.sequential(input)
         evidence = self.complex_softplus(complex_logits)
-        # 获取模长和相位并做clamp
-        magnitude = torch.abs(evidence)
-        phase = torch.angle(evidence)
-        clamped_magnitude = magnitude.clamp(max=30.0)
-        evidence = clamped_magnitude * torch.exp(1j * phase)
-
         alpha = evidence + self.lamb2  # 保留复数结构，不丢弃虚部
 
         if compute_loss:
@@ -172,7 +164,6 @@ class ModifiedEvidentialNet(nn.Module):
             # KL 散度也只基于实部
             # kl_alpha = evidence.real * (1 - labels_1hot.real) + self.lamb2
             # self.loss_kl = self.compute_kl_loss(kl_alpha, self.lamb2)
-            # REDL 推荐形式的 KL：真实 Dirichlet vs 均匀先验
             self.loss_kl = self.compute_kl_loss(alpha.real, target_concentration=self.lamb2)
             self.loss_kl = torch.clamp(self.loss_kl, min=0.0)
 

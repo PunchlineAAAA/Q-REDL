@@ -1,6 +1,6 @@
 conda activate redl
 
-cd ICLR2024-REDL/code_classical
+cd Q-REDL/code_classical
 
 python main.py --configid "1_mnist/mnist-redl-train" --suffix test
 

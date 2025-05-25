@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import wandb
 from utils.encoding import encode_complex
+from torch.cuda.amp import autocast, GradScaler # AMP
 import gc
 
 
@@ -106,7 +107,7 @@ def train(model, train_loader, val_loader, max_epochs=200, frequency=2, patience
     best_val_acc = 0.0  # 初始化最佳验证准确率为0
     epoch = 0  # 初始化epoch计数器
 
-    # scaler = GradScaler()  # 初始化AMP
+    scaler = GradScaler()  # 初始化AMP
 
     # 主训练循环
     for epoch in range(max_epochs):
@@ -118,10 +119,18 @@ def train(model, train_loader, val_loader, max_epochs=200, frequency=2, patience
 
             model.train()  # 确保模型处于训练模式
 
-            # 前向传播并计算损失
-            model(X_train, Y_train, compute_loss=True, epoch=epoch)
-            model.step()  # 执行优化步骤
-            # model.module.step()  # 用于分布式训练的代码（当前未使用）
+            model.optimizer.zero_grad()
+            with autocast():  # ✅ AMP 自动混合精度
+                model(X_train, Y_train, compute_loss=True, epoch=epoch)
+                loss = model.grad_loss  # AMP中不能用loss.item()直接打印，可能会出错
+
+            scaler.scale(loss).backward()             # ✅ 使用 AMP 缩放 loss 反向传播
+            scaler.step(model.optimizer)              # ✅ 缩放优化器更新
+            scaler.update()                           # ✅ 更新缩放器状态
+            # # 前向传播并计算损失
+            # model(X_train, Y_train, compute_loss=True, epoch=epoch)
+            # model.step()  # 执行优化步骤
+            # # model.module.step()  # 用于分布式训练的代码（当前未使用）
 
         # 对于特定数据集和模型类型，更新学习率
         if full_config_dict['dataset_name'] == 'MNIST' or full_config_dict['model_type'] == 'DUQ':
