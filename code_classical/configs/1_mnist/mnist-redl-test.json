@@ -14,7 +14,7 @@
   "lamb2_list": [0.1],
   "noise_epsilon": 0.0,
   "architecture": "conv",
-  "input_dims": [28, 28, 1],
+  "input_dims": [1, 28, 28],
   "output_dim": 10,
   "hidden_dims": [64, 64, 64],
   "kernel_dim": 5,

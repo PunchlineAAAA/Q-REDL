@@ -104,11 +104,19 @@ def main(config_dict):
     print("✅ 开始遍历超参数组合")
     # 遍历所有的参数组合
     for setting in itertools.product(
-        seeds, lr_list, fisher_c_list, name_model_list, lamb1_list, lamb2_list, lambda_qx_list
+        seeds,
+        lr_list,
+        fisher_c_list,
+        name_model_list,
+        lamb1_list,
+        lamb2_list,
+        lambda_qx_list,
     ):
         (seed, lr, fisher_c, name_model, lamb1, lamb2, lambda_qx) = setting
 
-        print(f"🎯 当前 setting: seed={seed}, lr={lr}, fisher_c={fisher_c}, lamb1={lamb1}, lamb2={lamb2}, lambda_qx={lambda_qx}")
+        print(
+            f"🎯 当前 setting: seed={seed}, lr={lr}, fisher_c={fisher_c}, lamb1={lamb1}, lamb2={lamb2}, lambda_qx={lambda_qx}"
+        )
 
         # 设置随机种子以确保可重复性
         random.seed(seed)
@@ -219,6 +227,9 @@ def main(config_dict):
                 lamb1=lamb1,
                 lamb2=lamb2,
                 lambda_qx=lambda_qx,
+                use_quantum_metrics=use_quantum_metrics,
+                complex_support=complex_support,
+                enable_enhanced_metrics=enable_enhanced_metrics,
             )
 
             if use_wandb:
@@ -283,7 +294,7 @@ def main(config_dict):
 
             # 将模型移至设备并开始训练
             model.to(device)
-            print("🚀 准备开始训练")    
+            print("🚀 准备开始训练")
             train(
                 model,
                 train_loader,
@@ -331,27 +342,30 @@ def main(config_dict):
                 "differential_entropy",
                 "mutual_information",
             ]
-            
+
             # 如果启用量子度量，添加量子不确定性类型
             quantum_uncertainty_types = []
             if use_quantum_metrics:
                 quantum_uncertainty_types = [
                     "quantum_x_entropy",
-                    "quantum_discord", 
+                    "quantum_discord",
                     "quantum_nonspecificity",
                 ]
-            
+
             # 合并所有不确定性度量类型
             all_uncertainty_types = base_uncertainty_types + quantum_uncertainty_types
 
             # 计算各种不确定性度量指标
             for name in all_uncertainty_types:
                 # 根据模型类型跳过某些指标
-                if model_type == "duq" and name not in ["max_alpha"] + quantum_uncertainty_types:
+                if (
+                    model_type == "duq"
+                    and name not in ["max_alpha"] + quantum_uncertainty_types
+                ):
                     continue
                 if name == "max_modified_prob" and model_type != "menet":
                     continue
-                
+
                 # 跳过量子度量（如果不支持）
                 if name in quantum_uncertainty_types and not use_quantum_metrics:
                     continue
@@ -385,7 +399,10 @@ def main(config_dict):
                         )
                     elif model_type == "menet" or model_type == "ablation":
                         # 修改后的证据学习方法
-                        if enable_enhanced_metrics and name in quantum_uncertainty_types:
+                        if (
+                            enable_enhanced_metrics
+                            and name in quantum_uncertainty_types
+                        ):
                             aupr, auroc, score = enhanced_confidence(
                                 Y=id_Y_all,
                                 alpha=id_alpha_pred_all,
@@ -402,7 +419,9 @@ def main(config_dict):
                                 return_scores=True,
                             )
                     else:
-                        raise NotImplementedError(f"Model type {model_type} not supported")
+                        raise NotImplementedError(
+                            f"Model type {model_type} not supported"
+                        )
 
                     # 保存AUPR和AUROC指标
                     metrics[f"id_{abb_name}_apr"], metrics[f"id_{abb_name}_auroc"] = (
@@ -410,7 +429,7 @@ def main(config_dict):
                         auroc,
                     )
                     scores[f"{abb_name}"] = score
-                    
+
                 except Exception as e:
                     print(f"⚠️ 计算 {name} 时出错: {e}")
                     # 如果量子度量计算失败，跳过
@@ -433,8 +452,11 @@ def main(config_dict):
 
                 # 计算OOD数据的预测结果（支持复数）
                 ood_Y_all, ood_X_all, ood_alpha_pred_all = compute_X_Y_alpha(
-                    model, ood_test_loader, device, 
-                    noise_epsilon=noise_epsilon, complex_support=complex_support
+                    model,
+                    ood_test_loader,
+                    device,
+                    noise_epsilon=noise_epsilon,
+                    complex_support=complex_support,
                 )
 
                 # 如果是在原始数据集上添加噪声，计算准确率
@@ -445,7 +467,10 @@ def main(config_dict):
 
                 # 计算OOD检测指标
                 for name in all_uncertainty_types:
-                    if model_type == "duq" and name not in ["max_alpha"] + quantum_uncertainty_types:
+                    if (
+                        model_type == "duq"
+                        and name not in ["max_alpha"] + quantum_uncertainty_types
+                    ):
                         continue
                     if name == "max_modified_prob" and model_type != "menet":
                         continue
@@ -459,7 +484,10 @@ def main(config_dict):
 
                     # 选择适当的异常检测方法
                     try:
-                        if name in quantum_uncertainty_types and enable_enhanced_metrics:
+                        if (
+                            name in quantum_uncertainty_types
+                            and enable_enhanced_metrics
+                        ):
                             # 使用量子异常检测
                             print(f"📊 计算量子OOD检测: {name}")
                             aupr, auroc, _, ood_score = quantum_anomaly_detection(
@@ -478,7 +506,10 @@ def main(config_dict):
                                 return_scores=True,
                             )
                         elif model_type == "menet" or model_type == "ablation":
-                            if enable_enhanced_metrics and name in quantum_uncertainty_types:
+                            if (
+                                enable_enhanced_metrics
+                                and name in quantum_uncertainty_types
+                            ):
                                 aupr, auroc, _, ood_score = quantum_anomaly_detection(
                                     alpha=id_alpha_pred_all,
                                     ood_alpha=ood_alpha_pred_all,
@@ -495,14 +526,19 @@ def main(config_dict):
                                     return_scores=True,
                                 )
                         else:
-                            raise NotImplementedError(f"Model type {model_type} not supported")
+                            raise NotImplementedError(
+                                f"Model type {model_type} not supported"
+                            )
 
-                        metrics[f"ood_{abb_name}_apr"], metrics[f"ood_{abb_name}_auroc"] = (
+                        (
+                            metrics[f"ood_{abb_name}_apr"],
+                            metrics[f"ood_{abb_name}_auroc"],
+                        ) = (
                             aupr,
                             auroc,
                         )
                         ood_scores[f"{abb_name}"] = ood_score
-                        
+
                     except Exception as e:
                         print(f"⚠️ 计算OOD {name} 时出错: {e}")
                         if name in quantum_uncertainty_types:
@@ -515,16 +551,24 @@ def main(config_dict):
                 if use_quantum_metrics:
                     try:
                         # 计算纯量子X熵值（不用于分类，仅作记录）
-                        id_qx_entropy = quantum_x_entropy(id_alpha_pred_all).mean().item()
-                        ood_qx_entropy = quantum_x_entropy(ood_alpha_pred_all).mean().item()
-                        
+                        id_qx_entropy = (
+                            quantum_x_entropy(id_alpha_pred_all).mean().item()
+                        )
+                        ood_qx_entropy = (
+                            quantum_x_entropy(ood_alpha_pred_all).mean().item()
+                        )
+
                         # 计算量子discord和非特异性
                         id_qd = quantum_belief_entropy(id_alpha_pred_all).mean().item()
-                        ood_qd = quantum_belief_entropy(ood_alpha_pred_all).mean().item()
-                        
+                        ood_qd = (
+                            quantum_belief_entropy(ood_alpha_pred_all).mean().item()
+                        )
+
                         id_qn = quantum_nonspecificity(id_alpha_pred_all).mean().item()
-                        ood_qn = quantum_nonspecificity(ood_alpha_pred_all).mean().item()
-                        
+                        ood_qn = (
+                            quantum_nonspecificity(ood_alpha_pred_all).mean().item()
+                        )
+
                         # 记录这些度量值
                         metrics["id_qx_entropy_value"] = id_qx_entropy
                         metrics["ood_qx_entropy_value"] = ood_qx_entropy
@@ -532,10 +576,14 @@ def main(config_dict):
                         metrics["ood_discord_value"] = ood_qd
                         metrics["id_nonspecificity_value"] = id_qn
                         metrics["ood_nonspecificity_value"] = ood_qn
-                        
-                        print(f"📊 量子度量值 - ID: X={id_qx_entropy:.4f}, D={id_qd:.4f}, N={id_qn:.4f}")
-                        print(f"📊 量子度量值 - OOD: X={ood_qx_entropy:.4f}, D={ood_qd:.4f}, N={ood_qn:.4f}")
-                        
+
+                        print(
+                            f"📊 量子度量值-ID: X={id_qx_entropy:.4f}, D={id_qd:.4f}, N={id_qn:.4f}"
+                        )
+                        print(
+                            f"📊 量子度量值-OOD: X={ood_qx_entropy:.4f}, D={ood_qd:.4f}, N={ood_qn:.4f}"
+                        )
+
                     except Exception as e:
                         print(f"⚠️ 计算量子度量值时出错: {e}")
 
@@ -582,18 +630,30 @@ if __name__ == "__main__":
         my_parser.add_argument("--configid", action="store", type=str, required=True)
         my_parser.add_argument("--suffix", type=str, default="debug", required=False)
         # 新增命令行参数
-        my_parser.add_argument("--use_quantum_metrics", action="store_true", default=False, 
-                             help="Enable quantum uncertainty metrics")
-        my_parser.add_argument("--complex_support", action="store_true", default=False,
-                             help="Enable complex alpha support")
-        my_parser.add_argument("--enable_enhanced_metrics", action="store_true", default=False,
-                             help="Enable enhanced quantum metrics")
-        
+        my_parser.add_argument(
+            "--use_quantum_metrics",
+            action="store_true",
+            default=False,
+            help="Enable quantum uncertainty metrics",
+        )
+        my_parser.add_argument(
+            "--complex_support",
+            action="store_true",
+            default=False,
+            help="Enable complex alpha support",
+        )
+        my_parser.add_argument(
+            "--enable_enhanced_metrics",
+            action="store_true",
+            default=False,
+            help="Enable enhanced quantum metrics",
+        )
+
         args = my_parser.parse_args()
         args_configid = args.configid
         args_suffix = args.suffix
         args_use_quantum_metrics = args.use_quantum_metrics
-        args_complex_support = args.complex_support  
+        args_complex_support = args.complex_support
         args_enable_enhanced_metrics = args.enable_enhanced_metrics
     else:
         # 使用默认值
@@ -626,17 +686,11 @@ if __name__ == "__main__":
     # 添加额外的配置参数
     proced_config_dict["config_id"] = my_config_id
     proced_config_dict["suffix"] = args_suffix
-    
+
     # 新增：量子度量相关配置
-    if use_argparse:
-        proced_config_dict["use_quantum_metrics"] = args_use_quantum_metrics
-        proced_config_dict["complex_support"] = args_complex_support
-        proced_config_dict["enable_enhanced_metrics"] = args_enable_enhanced_metrics
-    else:
-        # 默认启用量子度量（如果配置文件中没有指定）
-        proced_config_dict.setdefault("use_quantum_metrics", True)
-        proced_config_dict.setdefault("complex_support", True)
-        proced_config_dict.setdefault("enable_enhanced_metrics", True)
+    proced_config_dict.setdefault("use_quantum_metrics", False)
+    proced_config_dict.setdefault("complex_support", False)
+    proced_config_dict.setdefault("enable_enhanced_metrics", False)
 
     # 设置保存路径
     proced_config_dict["model_dir"] = f"{PROJPATH}/saved_models/{my_config_id}/"

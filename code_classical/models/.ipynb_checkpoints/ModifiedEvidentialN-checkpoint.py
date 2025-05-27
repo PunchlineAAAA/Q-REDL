@@ -3,7 +3,6 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-
 # 需要重新定义的架构导入
 # 注意：这些架构需要重新实现为复数版本
 from architectures.complex_linear_sequential import complex_linear_sequential
@@ -124,18 +123,27 @@ class ModifiedEvidentialNet(nn.Module):
         return F.softmax(x_work, dim=-1)
 
     def complex_softplus(self, x):
-        magnitude = torch.abs(x)
-        phase = torch.angle(x)
+        # magnitude = torch.abs(x)
+        # # phase = torch.angle(x)    # polar
+        # phase = x.imag
 
-        # 避免 phase NaN（如复数为 0）
-        phase = torch.where(magnitude < 1e-8, torch.zeros_like(phase), phase)
-        magnitude = torch.clamp(magnitude, max=20.0)  # 避免溢出
+        # # 避免 phase NaN（如复数为 0）
+        # phase = torch.where(magnitude < 1e-8, torch.zeros_like(phase), phase)
+        # magnitude = torch.clamp(magnitude, max=20.0)  # 避免溢出
 
-        new_magnitude = F.softplus(magnitude)
-        return new_magnitude * torch.exp(1j * phase)
+        # new_magnitude = F.softplus(magnitude)
+        # return new_magnitude * torch.exp(1j * phase)
+        # return torch.complex(F.softplus(x.real), F.softplus(x.imag))
+        return torch.complex(F.softplus(torch.abs(x)), F.softplus(x.imag))
 
     def forward(
-        self, input, labels_=None, return_output="alpha", compute_loss=False, epoch=10.0
+        self,
+        input,
+        labels_=None,
+        return_output="alpha",
+        compute_loss=False,
+        epoch=10.0,
+        batch_index=0,
     ):
         assert not (labels_ is None and compute_loss)
 
@@ -144,8 +152,19 @@ class ModifiedEvidentialNet(nn.Module):
                 "Input must be complex-valued. Please encode using encode_complex()."
             )
 
+        input = input.to(torch.complex64)
+        input = input.to(next(self.parameters()).device)
+
         complex_logits = self.sequential(input)
         evidence = self.complex_softplus(complex_logits)
+        norm = torch.abs(evidence).sum(-1, keepdim=True) + 1e-6  # 按类别维归一化
+        evidence = evidence / norm  # 保持比例但控制总量
+        # 获取模长和相位并做clamp
+        magnitude = torch.abs(evidence)
+        phase = torch.angle(evidence)
+        clamped_magnitude = magnitude.clamp(max=30.0)
+        evidence = clamped_magnitude * torch.exp(1j * phase)
+
         alpha = evidence + self.lamb2  # 保留复数结构，不丢弃虚部
 
         if compute_loss:
@@ -164,7 +183,10 @@ class ModifiedEvidentialNet(nn.Module):
             # KL 散度也只基于实部
             # kl_alpha = evidence.real * (1 - labels_1hot.real) + self.lamb2
             # self.loss_kl = self.compute_kl_loss(kl_alpha, self.lamb2)
-            self.loss_kl = self.compute_kl_loss(alpha.real, target_concentration=self.lamb2)
+            # REDL 推荐形式的 KL：真实 Dirichlet vs 均匀先验
+            self.loss_kl = self.compute_kl_loss(
+                alpha.real, target_concentration=self.lamb2
+            )
             self.loss_kl = torch.clamp(self.loss_kl, min=0.0)
 
             # 计算复数量子X-entropy正则项（对复数alpha操作）
@@ -179,6 +201,13 @@ class ModifiedEvidentialNet(nn.Module):
 
             self.grad_loss += self.lambda_qx * qx_loss
 
+            # ✅ 只在第一个 batch 打印一次
+            # if batch_index % 300 == 0:
+            #     print(
+            #         f"[Debug] epoch={epoch} | loss_mse={self.loss_mse.item():.6f} | "
+            #         f"loss_kl={self.loss_kl.item():.6f} | loss_qx={self.loss_qx.item():.6f} | "
+            #         f"total_loss={self.grad_loss.item():.6f}"
+            #     )
 
         if return_output == "hard":
             prob = self.complex_softmax(alpha, use_squared=True)

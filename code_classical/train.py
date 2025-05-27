@@ -5,10 +5,12 @@ from utils.encoding import encode_complex
 import gc
 
 
-def compute_loss_accuracy(model, loader, epoch, device=torch.device("cpu"), is_fisher=False):
+def compute_loss_accuracy(
+    model, loader, epoch, device=torch.device("cpu"), is_fisher=False
+):
     """
     计算模型在给定数据集上的损失和准确率
-    
+
     参数:
         model: 要评估的模型
         loader: 数据加载器
@@ -22,9 +24,9 @@ def compute_loss_accuracy(model, loader, epoch, device=torch.device("cpu"), is_f
 
         # 如果使用Fisher信息损失，初始化各个损失组件
         if is_fisher:
-            loss_mse_ = 0.0   # 均方误差损失
-            loss_var_ = 0.0   # 方差损失
-            loss_kl_ = 0.0    # KL散度损失
+            loss_mse_ = 0.0  # 均方误差损失
+            loss_var_ = 0.0  # 方差损失
+            loss_kl_ = 0.0  # KL散度损失
             loss_fisher_ = 0.0  # Fisher信息损失
 
         # 遍历数据批次
@@ -34,10 +36,14 @@ def compute_loss_accuracy(model, loader, epoch, device=torch.device("cpu"), is_f
             X = encode_complex(X, method="rect")
 
             # 根据模型损失类型决定前向传播方式
-            if model.loss == 'DUQ':
-                Y_pred = model(X, Y, return_output='hard', compute_loss=False, epoch=epoch)
+            if model.loss == "DUQ":
+                Y_pred = model(
+                    X, Y, return_output="hard", compute_loss=False, epoch=epoch
+                )
             else:
-                Y_pred = model(X, Y, return_output='hard', compute_loss=True, epoch=epoch)
+                Y_pred = model(
+                    X, Y, return_output="hard", compute_loss=True, epoch=epoch
+                )
 
             # 收集所有批次的预测和真实标签，用于计算整体准确率
             if batch_index == 0:
@@ -67,7 +73,7 @@ def compute_loss_accuracy(model, loader, epoch, device=torch.device("cpu"), is_f
 
         # 打印预测类别分布
         # print("Y_pred counts:", torch.bincount(Y_pred_all))
-        
+
         # 计算准确率
         accuracy = ((Y_pred_all == Y_all).float().sum() / Y_pred_all.size(0)).item()
 
@@ -79,11 +85,23 @@ def compute_loss_accuracy(model, loader, epoch, device=torch.device("cpu"), is_f
         return accuracy, total_loss_
 
 
-def train(model, train_loader, val_loader, max_epochs=200, frequency=2, patience=5, model_path='saved_model',
-          full_config_dict={}, use_wandb=False, device=torch.device("cpu"), is_fisher=False, output_dim=10):
+def train(
+    model,
+    train_loader,
+    val_loader,
+    max_epochs=200,
+    frequency=2,
+    patience=5,
+    model_path="saved_model",
+    full_config_dict={},
+    use_wandb=False,
+    device=torch.device("cpu"),
+    is_fisher=False,
+    output_dim=10,
+):
     """
     训练神经网络模型的主函数
-    
+
     参数:
         model: 要训练的模型
         train_loader: 训练数据加载器
@@ -112,19 +130,30 @@ def train(model, train_loader, val_loader, max_epochs=200, frequency=2, patience
     for epoch in range(max_epochs):
         # 遍历训练数据批次
         for batch_index, (X_train, Y_train) in enumerate(train_loader):
-            X_train, Y_train = X_train.to(device), Y_train.to(device)  # 将数据移到指定设备
+            X_train, Y_train = X_train.to(device), Y_train.to(
+                device
+            )  # 将数据移到指定设备
 
             X_train = encode_complex(X_train, method="rect")
 
             model.train()  # 确保模型处于训练模式
 
             # 前向传播并计算损失
-            model(X_train, Y_train, compute_loss=True, epoch=epoch)
+            model(
+                X_train,
+                Y_train,
+                compute_loss=True,
+                epoch=epoch,
+                batch_index=batch_index,
+            )
             model.step()  # 执行优化步骤
             # model.module.step()  # 用于分布式训练的代码（当前未使用）
 
         # 对于特定数据集和模型类型，更新学习率
-        if full_config_dict['dataset_name'] == 'MNIST' or full_config_dict['model_type'] == 'DUQ':
+        if (
+            full_config_dict["dataset_name"] == "MNIST"
+            or full_config_dict["model_type"] == "DUQ"
+        ):
             model.scheduler.step()
 
         # 清理显存
@@ -138,20 +167,44 @@ def train(model, train_loader, val_loader, max_epochs=200, frequency=2, patience
             if use_wandb:
                 if is_fisher:
                     # 对于Fisher损失，计算和记录多个损失组件
-                    train_accuracy, total_loss_, loss_mse_, loss_var_, loss_kl_, loss_fisher_ = compute_loss_accuracy(
-                        model, train_loader, epoch, device=device, is_fisher=True)
-                    wandb.log({'Train/total_loss_': round(total_loss_, 3), 'Train/loss_mse_': round(loss_mse_, 3),
-                               'Train/loss_var_': round(loss_var_, 3), 'Train/loss_kl_': round(loss_kl_, 3),
-                               'Train/loss_fisher_': round(loss_fisher_, 3), 'Train/Acc': round(train_accuracy * 100, 3),
-                               'Train/epoch': epoch + 1})
+                    (
+                        train_accuracy,
+                        total_loss_,
+                        loss_mse_,
+                        loss_var_,
+                        loss_kl_,
+                        loss_fisher_,
+                    ) = compute_loss_accuracy(
+                        model, train_loader, epoch, device=device, is_fisher=True
+                    )
+                    wandb.log(
+                        {
+                            "Train/total_loss_": round(total_loss_, 3),
+                            "Train/loss_mse_": round(loss_mse_, 3),
+                            "Train/loss_var_": round(loss_var_, 3),
+                            "Train/loss_kl_": round(loss_kl_, 3),
+                            "Train/loss_fisher_": round(loss_fisher_, 3),
+                            "Train/Acc": round(train_accuracy * 100, 3),
+                            "Train/epoch": epoch + 1,
+                        }
+                    )
                 else:
                     # 对于标准损失，计算和记录损失和准确率
-                    train_accuracy, total_loss_ = compute_loss_accuracy(model, train_loader, epoch, device=device)
-                    wandb.log({'Train/total_loss_': round(total_loss_, 3), 'Train/Acc': round(train_accuracy * 100, 3),
-                               'Train/epoch': epoch + 1})
+                    train_accuracy, total_loss_ = compute_loss_accuracy(
+                        model, train_loader, epoch, device=device
+                    )
+                    wandb.log(
+                        {
+                            "Train/total_loss_": round(total_loss_, 3),
+                            "Train/Acc": round(train_accuracy * 100, 3),
+                            "Train/epoch": epoch + 1,
+                        }
+                    )
 
             # 在验证集上计算性能
-            val_accuracy, val_loss = compute_loss_accuracy(model, val_loader, epoch, device=device)
+            val_accuracy, val_loss = compute_loss_accuracy(
+                model, val_loader, epoch, device=device
+            )
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)
 
@@ -162,27 +215,41 @@ def train(model, train_loader, val_loader, max_epochs=200, frequency=2, patience
 
             # 在wandb中记录验证性能（如果启用）
             if use_wandb:
-                wandb.log({'Val/total_loss_': round(val_loss * 100, 3), 'Val/Acc': round(val_accuracy * 100, 3),
-                           'Val/epoch': epoch + 1})
+                wandb.log(
+                    {
+                        "Val/total_loss_": round(val_loss * 100, 3),
+                        "Val/Acc": round(val_accuracy * 100, 3),
+                        "Val/epoch": epoch + 1,
+                    }
+                )
 
             # 打印当前验证性能（蓝色文字）
-            print("\033[34m Epoch {} -> Val loss {} | Val Acc. {}% | Best Val Acc. {}%\033[0m".format(
-                epoch,
-                round(val_losses[-1] * 100, 3),
-                round(val_accuracies[-1] * 100, 3),
-                round(best_val_acc * 100, 3)))
+            print(
+                "\033[34m Epoch {} -> Val loss {} | Val Acc. {}% | Best Val Acc. {}%\033[0m".format(
+                    epoch,
+                    round(val_losses[-1] * 100, 3),
+                    round(val_accuracies[-1] * 100, 3),
+                    round(best_val_acc * 100, 3),
+                )
+            )
 
             # 如果当前验证准确率是最好的，保存模型
             if best_val_acc < val_accuracies[-1]:
                 best_val_acc = val_accuracies[-1]
                 torch.save(
-                    {'epoch': epoch, 'model_config_dict': full_config_dict, 'model_state_dict': model.state_dict(),
-                     'loss': best_val_loss}, f"{model_path}_best")
-                print(f'Best model saved, Epoch: {epoch}')
+                    {
+                        "epoch": epoch,
+                        "model_config_dict": full_config_dict,
+                        "model_state_dict": model.state_dict(),
+                        "loss": best_val_loss,
+                    },
+                    f"{model_path}_best",
+                )
+                print(f"Best model saved, Epoch: {epoch}")
 
             # 检测NaN损失并中断训练
             if np.isnan(val_losses[-1]):
-                print('Detected NaN Loss')
+                print("Detected NaN Loss")
                 break
 
             # 早停逻辑（未使用）
@@ -192,9 +259,15 @@ def train(model, train_loader, val_loader, max_epochs=200, frequency=2, patience
 
     # 保存最终模型
     torch.save(
-        {'epoch': epoch, 'model_config_dict': full_config_dict, 'model_state_dict': model.state_dict(),
-         'loss': val_loss}, f"{model_path}_last")
-    print(f'Last model saved, Epoch: {epoch}')
+        {
+            "epoch": epoch,
+            "model_config_dict": full_config_dict,
+            "model_state_dict": model.state_dict(),
+            "loss": val_loss,
+        },
+        f"{model_path}_last",
+    )
+    print(f"Last model saved, Epoch: {epoch}")
 
     # 清理显存
     torch.cuda.empty_cache()

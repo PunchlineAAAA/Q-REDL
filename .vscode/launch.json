@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Test MNIST Q-REDL",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/code_classical/main.py",
+            "args": [
+                "--configid",
+                "1_mnist/mnist-redl-train",
+                "--suffix",
+                "test"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}/code_classical"
+        }
+    ]
+}

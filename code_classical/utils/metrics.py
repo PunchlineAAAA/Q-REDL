@@ -93,18 +93,18 @@ def quantum_x_entropy(alpha, return_components=False):
     eps = 1e-8
     alpha_norm = alpha_norm + eps
 
+    # [batch] 每个样本的结构维度 d̂_ν（统计非零 alpha）
+    d_nu = torch.sum(alpha_norm > eps, dim=-1).float()  # [batch]
+    structural_term = torch.log(2.0 ** d_nu - 1 + eps)  # log(2^d̂ - 1)
+
     # 类别数量（结构维度）
     num_classes = alpha.shape[-1]
 
     # 不一致/冲突项: -∑ Ê_ν log Ê_ν (冯·诺依曼熵部分)
     discord = -torch.sum(alpha_norm * torch.log(alpha_norm + eps), dim=-1)
 
-    # 非特异性/同时性项: ∑ Ê_ν log(2^d̂_ν - 1)
-    # 为简化起见，我们使用num_classes作为结构维度
-    structural_factor = torch.log(
-        torch.tensor(2.0**num_classes - 1, dtype=torch.float32)
-    )
-    nonspecificity = torch.sum(alpha_norm, dim=-1) * structural_factor
+    # 非特异性项: ∑ Ê_ν log(2^d̂ - 1)（结构复杂性）
+    nonspecificity = torch.sum(alpha_norm, dim=-1) * structural_term 
 
     # 总量子X熵
     x_entropy = discord + nonspecificity

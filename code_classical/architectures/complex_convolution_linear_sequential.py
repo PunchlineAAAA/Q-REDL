@@ -5,13 +5,8 @@ from complexPyTorch.complexLayers import ComplexLinear, ComplexConv2d, ComplexBa
 
 
 class ComplexFlatten(nn.Module):
-    """
-    将多维复数张量展平为一维复数张量
-    """
     def forward(self, x):
-        # 复数张量展平，保持批次维度不变
-        batch_size = x.shape[0]
-        return x.view(batch_size, -1)
+        return x.contiguous().view(x.size(0), -1)
 
 
 def complex_convolution_linear_sequential(input_dims, linear_hidden_dims, conv_hidden_dims, output_dim, kernel_dim=3, k_lipschitz=None):
@@ -31,7 +26,7 @@ def complex_convolution_linear_sequential(input_dims, linear_hidden_dims, conv_h
     """
     # 确认输入维度格式正确
     assert len(input_dims) == 3, "输入维度必须是[channels, height, width]格式"
-    height, width, in_channels = input_dims 
+    in_channels, height, width = input_dims
     
     # 创建网络层列表
     layers = []

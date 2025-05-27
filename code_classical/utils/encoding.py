@@ -1,6 +1,6 @@
 import torch
 
-def encode_complex(X, method="polar"):
+def encode_complex(X, method="rect"):
     if method == "polar":
         return torch.complex(torch.cos(X), torch.sin(X))
     elif method == "rect":
